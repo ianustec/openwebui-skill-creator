@@ -143,8 +143,9 @@ Run through this checklist mentally and fix the draft if anything is missing:
 - [ ] rules explain why, not only what
 """
 
+# Keep historical EN/IT substring matches; new French aliases are word-bounded.
 _GUIDELINES_SECTION_HINTS = (
-    ("purpose", ("purpose", "when to use", "scopo", "quando usar")),
+    ("purpose", ("purpose", "when to use", "scopo", "quando usar", "quando usare")),
     ("procedure", ("procedure", "step", "workflow", "process", "procedura")),
     ("output format", ("output", "template", "format", "struttura")),
     ("examples", ("example", "esempio", "esempi", "input:", "output:")),
@@ -152,17 +153,54 @@ _GUIDELINES_SECTION_HINTS = (
                     "non trov", "fuori scope", "out of scope", "failure")),
 )
 
+# Avoid ambiguous English words such as "but" and "structure". List plurals
+# explicitly so "modèle"/"modèles" work without accepting English "modeled".
+_GUIDELINES_FR_SECTION_HINTS = {
+    "purpose": ("objectif", "objectifs", "finalité", "finalités",
+                "quand l'utiliser", "quand l’utiliser", "quand utiliser",
+                "déclencheur", "déclencheurs"),
+    "procedure": ("procédure", "procédures", "étape", "étapes", "méthode",
+                  "méthodes", "déroulé", "déroulés", "processus"),
+    # Bare "sortie"/"entrée" are also English nouns (sortie, entree).
+    "output format": ("format de sortie", "sortie attendue", "sorties attendues",
+                      "modèle", "modèles", "gabarit", "gabarits"),
+    "examples": ("exemple", "exemples"),
+    "edge cases": ("cas limite", "cas limites", "erreur", "erreurs",
+                   "hors périmètre", "si rien n'est trouvé", "échec", "échecs",
+                   "cas particulier", "cas particuliers"),
+}
+
+
+def _normalize_guideline_text(text: str) -> str:
+    """Match guideline hints without case or combining-accent differences."""
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", text.lower())
+        if not unicodedata.combining(c)
+    )
+
+
+def _has_french_hint(text: str, hints: tuple[str, ...]) -> bool:
+    """Match whole hints in already-normalized text, not inside other words."""
+    return any(
+        re.search(r"(?<!\w)" + re.escape(_normalize_guideline_text(h)) + r"(?!\w)", text)
+        for h in hints
+    )
+
 
 def _analyze_skill_body(body: str) -> list[str]:
-    """Soft quality warnings: which recommended sections seem missing."""
-    low = (body or "").lower()
+    """Soft quality warnings using accent-insensitive EN/IT/FR hints."""
+    low = _normalize_guideline_text(body or "")
     warnings: list[str] = []
     if not low.strip():
         return warnings
     for label, hints in _GUIDELINES_SECTION_HINTS:
-        if not any(h in low for h in hints):
+        if not any(h in low for h in hints) and not _has_french_hint(
+            low, _GUIDELINES_FR_SECTION_HINTS[label]
+        ):
             warnings.append(f"no clear '{label}' section")
-    if "example" not in low and "esempi" not in low and "esempio" not in low:
+    if not any(h in low for h in ("example", "esempi", "esempio")) and not _has_french_hint(
+        low, ("exemple", "exemples")
+    ):
         warnings.append("no worked example (input → output)")
     return warnings
 
